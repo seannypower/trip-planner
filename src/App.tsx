@@ -97,13 +97,7 @@ const ItineraryPlanner = () => {
   });
 
   const allDisplayTimes = [
-    ...new Set([
-      ...timeSlots,
-      ...[...scheduledStartTimes].filter((t) => {
-        const [, min] = (t as string).split(":").map(Number);
-        return min % snapInterval === 0;
-      }),
-    ]),
+    ...new Set([...timeSlots, ...scheduledStartTimes]),
   ].sort();
 
   const allAreas = [...new Set(activities.map((a) => a.area))].sort();
@@ -823,15 +817,17 @@ const ItineraryPlanner = () => {
               const currentMinutes = timeToMinutes(time);
               const nextMinutes = nextTime ? timeToMinutes(nextTime) : currentMinutes + snapInterval;
               const rowHeight = `${nextMinutes - currentMinutes}px`;
+              const [, min] = time.split(":").map(Number);
+              const isAligned = min % snapInterval === 0;
 
               return (
                 <div
                   key={timeIdx}
-                  className="flex border-b"
+                  className={`flex ${isAligned ? "border-b" : ""}`}
                   style={{ height: rowHeight }}
                 >
                   <div className="w-20 flex-shrink-0 border-r bg-gray-50 px-2 py-1 text-xs text-gray-600 sticky left-0 z-20">
-                    {formatTime(time)}
+                    {isAligned ? formatTime(time) : ""}
                   </div>
                   {days.map((day, dayIdx) => {
                     const activitiesToRender = getScheduledActivitiesForSlot(
