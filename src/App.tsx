@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 
 const ItineraryPlanner = () => {
-  const [snapInterval, setSnapInterval] = useState(15);
+  const snapInterval = 15;
   const [activities, setActivities] = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingActivity, setEditingActivity] = useState(null);
@@ -131,9 +131,6 @@ const ItineraryPlanner = () => {
       if (data && data.activities && data.activities.length > 0) {
         setActivities(data.activities);
       }
-      if (data && data.snapInterval) {
-        setSnapInterval(data.snapInterval);
-      }
       if (data && data.tripConfig) {
         setTripConfig(data.tripConfig);
       }
@@ -147,9 +144,6 @@ const ItineraryPlanner = () => {
       loadItinerary().then((data) => {
         if (data && data.activities && data.activities.length > 0) {
           setActivities(data.activities);
-        }
-        if (data && data.snapInterval) {
-          setSnapInterval(data.snapInterval);
         }
         if (data && data.tripConfig) {
           setTripConfig(data.tripConfig);
@@ -533,22 +527,7 @@ const ItineraryPlanner = () => {
             </button>
           </div>
           <div className="flex gap-4 items-center">
-            <div className="flex gap-2 items-center bg-white px-3 py-2 rounded border">
-              <span className="text-sm font-medium">Snap:</span>
-              {[15, 30, 60].map((interval) => (
-                <button
-                  key={interval}
-                  onClick={() => setSnapInterval(interval)}
-                  className={`px-3 py-1 rounded text-sm ${
-                    snapInterval === interval
-                      ? "bg-blue-500 text-white"
-                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                  }`}
-                >
-                  {interval}min
-                </button>
-              ))}
-            </div>
+
             <button
               onClick={() => setShowAddForm(!showAddForm)}
               className="bg-blue-500 text-white px-4 py-2 rounded flex items-center gap-2 hover:bg-blue-600"
@@ -818,16 +797,16 @@ const ItineraryPlanner = () => {
               const nextMinutes = nextTime ? timeToMinutes(nextTime) : currentMinutes + snapInterval;
               const rowHeight = `${nextMinutes - currentMinutes}px`;
               const [, min] = time.split(":").map(Number);
-              const isAligned = min % snapInterval === 0;
+              const isHour = min === 0;
 
               return (
                 <div
                   key={timeIdx}
-                  className={`flex ${isAligned ? "border-b" : ""}`}
+                  className="flex border-b"
                   style={{ height: rowHeight }}
                 >
                   <div className="w-20 flex-shrink-0 border-r bg-gray-50 px-2 py-1 text-xs text-gray-600 sticky left-0 z-20">
-                    {isAligned ? formatTime(time) : ""}
+                    {isHour ? formatTime(time) : ""}
                   </div>
                   {days.map((day, dayIdx) => {
                     const activitiesToRender = getScheduledActivitiesForSlot(
