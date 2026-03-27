@@ -100,7 +100,7 @@ const ItineraryPlanner = () => {
     ...new Set([
       ...timeSlots,
       ...[...scheduledStartTimes].filter((t) => {
-        const [, min] = t.split(":").map(Number);
+        const [, min] = (t as string).split(":").map(Number);
         return min % snapInterval === 0;
       }),
     ]),
