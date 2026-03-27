@@ -97,7 +97,13 @@ const ItineraryPlanner = () => {
   });
 
   const allDisplayTimes = [
-    ...new Set([...timeSlots, ...scheduledStartTimes]),
+    ...new Set([
+      ...timeSlots,
+      ...[...scheduledStartTimes].filter((t) => {
+        const [, min] = t.split(":").map(Number);
+        return min % snapInterval === 0;
+      }),
+    ]),
   ].sort();
 
   const allAreas = [...new Set(activities.map((a) => a.area))].sort();
