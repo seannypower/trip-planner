@@ -791,6 +791,35 @@ const ItineraryPlanner = () => {
             </div>
 
             {/* Time Slots */}
+            <div className="flex">
+              {/* Left gutter: labels as overlay */}
+              <div className="w-20 flex-shrink-0 border-r bg-gray-50 sticky left-0 z-20 relative">
+                {allDisplayTimes.map((time, timeIdx) => {
+                  const nextTime = allDisplayTimes[timeIdx + 1];
+                  const currentMinutes = timeToMinutes(time);
+                  const nextMinutes = nextTime ? timeToMinutes(nextTime) : currentMinutes + snapInterval;
+                  const rowHeight = nextMinutes - currentMinutes;
+                  const [, min] = time.split(":").map(Number);
+                  const isHour = min === 0;
+                  const topOffset = allDisplayTimes.slice(0, timeIdx).reduce((acc, t, i) => {
+                    const nt = allDisplayTimes[i + 1];
+                    const cm = timeToMinutes(t);
+                    const nm = nt ? timeToMinutes(nt) : cm + snapInterval;
+                    return acc + (nm - cm);
+                  }, 0);
+                  return isHour ? (
+                    <div
+                      key={time}
+                      className="absolute left-0 w-full px-2 text-xs text-gray-600"
+                      style={{ top: `${topOffset}px` }}
+                    >
+                      {formatTime(time)}
+                    </div>
+                  ) : null;
+                })}
+              </div>
+              {/* Grid rows (no gutter cell) */}
+              <div className="flex-1">
             {allDisplayTimes.map((time, timeIdx) => {
               const nextTime = allDisplayTimes[timeIdx + 1];
               const currentMinutes = timeToMinutes(time);
@@ -802,12 +831,10 @@ const ItineraryPlanner = () => {
               return (
                 <div
                   key={timeIdx}
-                  className="flex border-b"
+                  className={`flex ${isHour ? "border-t border-gray-300" : ""}`}
                   style={{ height: rowHeight }}
                 >
-                  <div className="w-20 flex-shrink-0 border-r bg-gray-50 px-2 py-1 text-xs text-gray-600 sticky left-0 z-20">
-                    {isHour ? formatTime(time) : ""}
-                  </div>
+                  <div className="w-0"></div>
                   {days.map((day, dayIdx) => {
                     const activitiesToRender = getScheduledActivitiesForSlot(
                       dayIdx,
@@ -960,6 +987,8 @@ const ItineraryPlanner = () => {
                 </div>
               );
             })}
+              </div>{/* end grid rows */}
+            </div>{/* end flex gutter+rows */}
           </div>
         </div>
       </div>
