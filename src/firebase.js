@@ -1,6 +1,5 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getDatabase, ref, set, get } from "firebase/database";
-import { getAuth, signInAnonymously } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAaD0SfuCz1YOeFl2wiXfOBQerLAGgOxfY",
@@ -15,14 +14,60 @@ const firebaseConfig = {
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const database = getDatabase(app);
-const auth = getAuth(app);
+const itineraryKey =
+  (process.env.REACT_APP_ITINERARY_KEY || "itinerary-vancouver").trim();
 
-// Sign in anonymously once at module load; both save/load await this promise
-const authReady = signInAnonymously(auth);
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const shouldRetryFirebaseError = (error) => {
+  const code = error?.code || "";
+  return (
+    code === "auth/network-request-failed" ||
+    code === "database/network-error" ||
+    code === "auth/too-many-requests"
+  );
+};
+
+const withRetry = async (operation, maxAttempts = 3) => {
+  let lastError;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (!shouldRetryFirebaseError(error) || attempt === maxAttempts) {
+        throw error;
+      }
+      await delay(500 * attempt);
+    }
+  }
+  throw lastError;
+};
+
+let authModulePromise;
+
+const getAuthModule = async () => {
+  if (!authModulePromise) {
+    authModulePromise = import("firebase/auth");
+  }
+  return authModulePromise;
+};
+
+const ensureAuthenticated = async () => {
+  const { getAuth, signInAnonymously } = await getAuthModule();
+  const auth = getAuth(app);
+
+  if (auth.currentUser) {
+    return auth.currentUser;
+  }
+
+  const credential = await withRetry(() => signInAnonymously(auth));
+  return credential.user;
+};
 
 export const saveItinerary = async (activities, snapInterval, tripConfig) => {
-  await authReady;
-  const itineraryRef = ref(database, "itinerary-vancouver");
+  await ensureAuthenticated();
+  const itineraryRef = ref(database, itineraryKey);
   if (!Array.isArray(activities)) {
     console.error("Activities is not an array!", activities);
     return;
@@ -33,18 +78,20 @@ export const saveItinerary = async (activities, snapInterval, tripConfig) => {
       activitiesObject[activity.id] = activity;
     }
   });
-  return set(itineraryRef, {
-    activities: activitiesObject,
-    snapInterval,
-    tripConfig: tripConfig || null,
-    lastUpdated: new Date().toISOString(),
-  });
+  return withRetry(() =>
+    set(itineraryRef, {
+      activities: activitiesObject,
+      snapInterval,
+      tripConfig: tripConfig || null,
+      lastUpdated: new Date().toISOString(),
+    })
+  );
 };
 
 export const loadItinerary = async () => {
-  await authReady;
-  const itineraryRef = ref(database, "itinerary-vancouver");
-  const snapshot = await get(itineraryRef);
+  await ensureAuthenticated();
+  const itineraryRef = ref(database, itineraryKey);
+  const snapshot = await withRetry(() => get(itineraryRef));
   const data = snapshot.val();
   if (data && data.activities) {
     data.activities = Object.values(data.activities).filter((a) => a && a.id);

@@ -13,6 +13,40 @@ import {
   Tag,
 } from "lucide-react";
 
+const defaultTripConfig = {
+  tripName:
+    (process.env.REACT_APP_DEFAULT_TRIP_NAME || "Vancouver Trip").trim(),
+  startDate:
+    (process.env.REACT_APP_DEFAULT_START_DATE || "2026-09-09").trim(),
+  numDays: Number((process.env.REACT_APP_DEFAULT_NUM_DAYS || "5").trim()),
+};
+
+const normalizeTripConfig = (tripConfig) => {
+  const normalizedNumDays = Number(
+    typeof tripConfig?.numDays === "string"
+      ? tripConfig.numDays.trim()
+      : tripConfig?.numDays
+  );
+  const normalizedStartDate =
+    typeof tripConfig?.startDate === "string"
+      ? tripConfig.startDate.trim()
+      : "";
+  const hasValidStartDate =
+    /^\d{4}-\d{2}-\d{2}$/.test(normalizedStartDate);
+
+  return {
+    tripName:
+      (typeof tripConfig?.tripName === "string"
+        ? tripConfig.tripName.trim()
+        : "") || defaultTripConfig.tripName,
+    startDate: hasValidStartDate ? normalizedStartDate : defaultTripConfig.startDate,
+    numDays:
+      Number.isFinite(normalizedNumDays) && normalizedNumDays > 0
+        ? normalizedNumDays
+        : defaultTripConfig.numDays,
+  };
+};
+
 const ItineraryPlanner = () => {
   const snapInterval = 15;
   const [activities, setActivities] = useState([]);
@@ -39,13 +73,12 @@ const ItineraryPlanner = () => {
     "Other",
   ]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [selectedActivity, setSelectedActivity] = useState(null);
   const [showTripSettings, setShowTripSettings] = useState(false);
-  const [tripConfig, setTripConfig] = useState({
-    tripName: "Vancouver Trip",
-    startDate: "2026-09-09",
-    numDays: 5,
-  });
+  const [tripConfig, setTripConfig] = useState(
+    normalizeTripConfig(defaultTripConfig)
+  );
 
   const typeDurationDefaults: Record<string, number> = {
     Food: 90,
@@ -127,28 +160,35 @@ const ItineraryPlanner = () => {
 
   // Load from Firebase on mount
   useEffect(() => {
-    loadItinerary().then((data) => {
-      if (data && data.activities && data.activities.length > 0) {
-        setActivities(data.activities);
-      }
-      if (data && data.tripConfig) {
-        setTripConfig(data.tripConfig);
-      }
-      setIsLoaded(true);
-    });
+    loadItinerary()
+      .then((data) => {
+        setActivities(Array.isArray(data?.activities) ? data.activities : []);
+        setTripConfig(normalizeTripConfig(data?.tripConfig));
+        setLoadError("");
+        setIsLoaded(true);
+      })
+      .catch((error) => {
+        console.error("Failed to load itinerary:", error);
+        setActivities([]);
+        setTripConfig(normalizeTripConfig(defaultTripConfig));
+        setLoadError("Could not sync trip data from Firebase.");
+        setIsLoaded(true);
+      });
   }, []);
 
   // Auto-refresh from Firebase every 10 seconds
   useEffect(() => {
     const intervalId = setInterval(() => {
-      loadItinerary().then((data) => {
-        if (data && data.activities && data.activities.length > 0) {
-          setActivities(data.activities);
-        }
-        if (data && data.tripConfig) {
-          setTripConfig(data.tripConfig);
-        }
-      });
+      loadItinerary()
+        .then((data) => {
+          setActivities(Array.isArray(data?.activities) ? data.activities : []);
+          setTripConfig(normalizeTripConfig(data?.tripConfig));
+          setLoadError("");
+        })
+        .catch((error) => {
+          console.error("Failed to refresh itinerary:", error);
+          setLoadError("Could not sync trip data from Firebase.");
+        });
     }, 30000);
 
     return () => clearInterval(intervalId);
@@ -159,7 +199,10 @@ const ItineraryPlanner = () => {
     if (!isLoaded) return;
 
     const timeoutId = setTimeout(() => {
-      saveItinerary(activities, snapInterval, tripConfig);
+      saveItinerary(activities, snapInterval, tripConfig).catch((error) => {
+        console.error("Failed to save itinerary:", error);
+        setLoadError("Could not save trip data to Firebase.");
+      });
     }, 5000);
     return () => clearTimeout(timeoutId);
   }, [activities, snapInterval, tripConfig, isLoaded]);
@@ -576,6 +619,12 @@ const ItineraryPlanner = () => {
             <div className="text-xs text-gray-400 pb-2">
               ⚠️ Changing days won't delete scheduled activities — they'll just show unscheduled if their day no longer exists.
             </div>
+          </div>
+        )}
+
+        {loadError && (
+          <div className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {loadError}
           </div>
         )}
       </div>
