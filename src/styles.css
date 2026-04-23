@@ -3,8 +3,10 @@
   text-align: center;
 }
 
-/* Mobile portrait: ~390px wide (iPhone). Targets screens narrower than 640px. */
-@media (max-width: 640px) {
+/* Mobile portrait: fires on any touch device (phone/tablet) in portrait,
+   regardless of CSS viewport width. pointer: coarse excludes desktop browsers
+   (mouse = fine pointer) so resizing a desktop window won't trigger this. */
+@media (pointer: coarse) and (orientation: portrait) {
   /* Reduce outer padding to reclaim horizontal space */
   .trip-planner-root {
     padding: 4px !important;

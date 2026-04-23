@@ -1,4 +1,5 @@
 import { saveItinerary, loadItinerary } from "./firebase";
+import './styles.css';
 import React, { useState, useRef, useEffect } from "react";
 import {
   Plus,
