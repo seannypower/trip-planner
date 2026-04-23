@@ -2,3 +2,80 @@
   font-family: sans-serif;
   text-align: center;
 }
+
+/* Mobile portrait: ~390px wide (iPhone). Targets screens narrower than 640px. */
+@media (max-width: 640px) {
+  /* Reduce outer padding to reclaim horizontal space */
+  .trip-planner-root {
+    padding: 4px !important;
+  }
+
+  /* Reduce gap between sidebar and calendar */
+  .main-content-row {
+    gap: 4px !important;
+  }
+
+  /* Narrow the activities sidebar to ~88px */
+  .activities-sidebar {
+    width: 88px !important;
+    min-width: 88px !important;
+    flex-shrink: 0 !important;
+    padding: 4px !important;
+  }
+
+  .activities-sidebar h2 {
+    font-size: 0.6rem !important;
+    margin-bottom: 4px !important;
+  }
+
+  .activities-sidebar h3 {
+    font-size: 0.55rem !important;
+    margin-bottom: 2px !important;
+    margin-top: 4px !important;
+  }
+
+  /* Compact activity cards */
+  .activity-card {
+    padding: 3px !important;
+    margin-bottom: 3px !important;
+  }
+
+  /* Smaller activity name text */
+  .activity-name {
+    font-size: 0.6rem !important;
+    line-height: 1.2 !important;
+  }
+
+  /* Hide description, meta, and action buttons — title only on mobile */
+  .activity-desc,
+  .activity-meta,
+  .activity-actions {
+    display: none !important;
+  }
+
+  /* Narrow the time gutter to 32px */
+  .time-gutter {
+    width: 32px !important;
+    min-width: 32px !important;
+  }
+
+  /* Narrow day columns so 3 fit on screen at once */
+  .day-col {
+    min-width: 80px !important;
+    flex: 1 1 0 !important;
+  }
+
+  /* Compact day header padding */
+  .day-col-header {
+    padding: 3px 2px !important;
+    font-size: 0.65rem !important;
+  }
+
+  .day-col-header .font-semibold {
+    font-size: 0.65rem !important;
+  }
+
+  .day-col-header .text-xs {
+    font-size: 0.55rem !important;
+  }
+}

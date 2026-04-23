@@ -592,7 +592,7 @@ const ItineraryPlanner = () => {
   };
 
   return (
-    <div className="w-full h-screen bg-gray-50 p-4 overflow-hidden flex flex-col">
+    <div className="w-full h-screen bg-gray-50 p-4 overflow-hidden flex flex-col trip-planner-root">
       {/* Activity Detail Modal */}
       {selectedActivity && (
         <ActivityModal activity={selectedActivity} onClose={() => setSelectedActivity(null)} />
@@ -773,9 +773,9 @@ const ItineraryPlanner = () => {
       )}
 
       {/* Main Content */}
-      <div className="flex gap-4 flex-1 overflow-hidden">
+      <div className="flex gap-4 flex-1 overflow-hidden main-content-row">
         {/* Activity Cards */}
-        <div className="w-80 bg-white rounded border p-4 overflow-y-auto">
+        <div className="w-80 bg-white rounded border p-4 overflow-y-auto activities-sidebar">
           <h2 className="font-semibold mb-3 text-lg">Activities</h2>
           {(Object.entries(groupedByType) as [string, any[]][]).map(([type, typeActivities]) => (
             <div key={type} className="mb-4">
@@ -789,12 +789,12 @@ const ItineraryPlanner = () => {
                   onClick={() => setSelectedActivity(activity)}
                   className={`${getAreaColor(
                     activity.area
-                  )} border-2 rounded p-3 mb-2 cursor-pointer hover:shadow-md transition-shadow`}
+                  )} border-2 rounded p-3 mb-2 cursor-pointer hover:shadow-md transition-shadow activity-card`}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <div className="font-medium text-sm">
+                        <div className="font-medium text-sm activity-name">
                           {activity.name}
                         </div>
                         {activity.url && (
@@ -810,18 +810,18 @@ const ItineraryPlanner = () => {
                           </a>
                         )}
                       </div>
-                      <div className="text-xs text-gray-600 mt-1">
+                      <div className="text-xs text-gray-600 mt-1 activity-meta">
                         {activity.duration}min • {activity.area}
                       </div>
                       {activity.description && (
-                        <div className="text-xs text-gray-500 mt-1 italic">
+                        <div className="text-xs text-gray-500 mt-1 italic activity-desc">
                           {activity.description.length > 60
                             ? `${activity.description.substring(0, 60)}...`
                             : activity.description}
                         </div>
                       )}
                     </div>
-                    <div className="flex gap-1 ml-2">
+                    <div className="flex gap-1 ml-2 activity-actions">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -870,11 +870,11 @@ const ItineraryPlanner = () => {
           <div className="inline-block min-w-full">
             {/* Day Headers */}
             <div className="flex sticky top-0 bg-white z-10 border-b">
-              <div className="w-20 flex-shrink-0 border-r bg-gray-50 sticky left-0 z-20"></div>{" "}
+              <div className="w-20 flex-shrink-0 border-r bg-gray-50 sticky left-0 z-20 time-gutter"></div>{" "}
               {days.map((day, idx) => (
                 <div
                   key={idx}
-                  className="flex-1 min-w-[180px] p-3 text-center border-r"
+                  className="flex-1 min-w-[180px] p-3 text-center border-r day-col day-col-header"
                 >
                   <div className="font-semibold">{day.date}</div>
                   <div className="text-xs text-gray-500">{day.dayOfWeek}</div>
@@ -891,7 +891,7 @@ const ItineraryPlanner = () => {
             {/* Time Slots */}
             <div className="flex">
               {/* Left gutter: labels as overlay */}
-              <div className="w-20 flex-shrink-0 border-r bg-gray-50 sticky left-0 z-20 relative">
+              <div className="w-20 flex-shrink-0 border-r bg-gray-50 sticky left-0 z-20 relative time-gutter">
                 {allDisplayTimes.map((time, timeIdx) => {
                   const nextTime = allDisplayTimes[timeIdx + 1];
                   const currentMinutes = timeToMinutes(time);
@@ -947,7 +947,7 @@ const ItineraryPlanner = () => {
                     return (
                       <div
                         key={dayIdx}
-                        className="flex-1 min-w-[180px] border-r relative"
+                        className="flex-1 min-w-[180px] border-r relative day-col"
                         onDragOver={(e) => handleDragOver(dayIdx, time, e)}
                         onDrop={() => handleDrop(dayIdx, time)}
                       >
