@@ -89,6 +89,45 @@ const ItineraryPlanner = () => {
     Other: 60,
   };
 
+  const wmoIcon = (code: number): string => {
+    if (code === 0) return "☀️";
+    if (code <= 3) return "⛅";
+    if (code <= 48) return "🌫️";
+    if (code <= 57) return "🌦️";
+    if (code <= 67) return "🌧️";
+    if (code <= 77) return "❄️";
+    if (code <= 82) return "🌦️";
+    if (code <= 86) return "🌨️";
+    return "⛈️";
+  };
+
+  const [weatherByDate, setWeatherByDate] = useState<Record<string, { high: number; low: number; icon: string }>>({});
+
+  useEffect(() => {
+    fetch(
+      "https://api.open-meteo.com/v1/forecast?latitude=42.67&longitude=-76.95&daily=temperature_2m_max,temperature_2m_min,weathercode&temperature_unit=fahrenheit&timezone=America%2FNew_York&forecast_days=16"
+    )
+      .then((res) => res.json())
+      .then((data) => {
+        const map: Record<string, { high: number; low: number; icon: string }> = {};
+        const dates: string[] = data.daily?.time ?? [];
+        const highs: number[] = data.daily?.temperature_2m_max ?? [];
+        const lows: number[] = data.daily?.temperature_2m_min ?? [];
+        const codes: number[] = data.daily?.weathercode ?? [];
+        dates.forEach((date, i) => {
+          map[date] = {
+            high: Math.round(highs[i]),
+            low: Math.round(lows[i]),
+            icon: wmoIcon(codes[i]),
+          };
+        });
+        setWeatherByDate(map);
+      })
+      .catch(() => {
+        // Silently fail — weather is a UI-only layer
+      });
+  }, []);
+
   const generateDays = (startDateStr: string, numDays: number) => {
     const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"];
@@ -97,9 +136,13 @@ const ItineraryPlanner = () => {
     for (let i = 0; i < numDays; i++) {
       const d = new Date(start);
       d.setDate(start.getDate() + i);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
       result.push({
         date: `${monthNames[d.getMonth()]} ${d.getDate()}`,
         dayOfWeek: dayNames[d.getDay()],
+        isoDate: `${yyyy}-${mm}-${dd}`,
       });
     }
     return result;
@@ -835,6 +878,12 @@ const ItineraryPlanner = () => {
                 >
                   <div className="font-semibold">{day.date}</div>
                   <div className="text-xs text-gray-500">{day.dayOfWeek}</div>
+                  {weatherByDate[day.isoDate] && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      {weatherByDate[day.isoDate].icon}{" "}
+                      {weatherByDate[day.isoDate].high}°/{weatherByDate[day.isoDate].low}°
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
