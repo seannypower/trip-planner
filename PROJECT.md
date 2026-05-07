@@ -6,6 +6,27 @@
 - **CodeSandbox (backup/dev only):** https://fs4yq3-3000.csb.app/
 - **Local:** `/Users/hilsonmini/.openclaw/workspace/itinerary planner/event-planner1-forked/`
 
+## ⚠️ Direct Firebase Write Warning
+
+**The app overwrites Firebase on every save.** `saveItinerary()` does a full `set()` on the entire itinerary node with a 5-second debounce after any user interaction. Any direct Firebase writes made by scripts or external tools will be silently wiped if the app saves before it reloads from Firebase.
+
+**Safe procedure for external writes:**
+1. Write to Firebase via script
+2. Immediately hard-refresh the app tab (before touching anything else)
+3. The app loads the updated state into memory — subsequent auto-saves will preserve it
+
+**Identifying the correct Firebase key:**
+There are multiple keys per trip (e.g. `itinerary-nashville-preaks-2026` vs `preaks-nashville`). Always verify the correct key before writing:
+- Check the baked JS bundle at the live Vercel URL (search for `REACT_APP_ITINERARY_KEY`)
+- Or compare tripConfig name and activity count across keys — the live key will have the most activities and a matching trip name
+
+**Known Firebase keys (as of May 2026):**
+- `itinerary-finger-lakes` — Dan's Bachelor Trip - Ithaca (live at trip-planner-finger-lakes.vercel.app)
+- `itinerary-nashville-preaks-2026` — Preaks in Nash (live at trip-planner-preaks.vercel.app)
+- `itinerary-vancouver` — Vancouver Sept 2026
+- `itinerary-finger-lakes-2026` — stub/test key
+- `preaks-nashville` — empty stub key
+
 ## Stack
 React, TypeScript, Firebase Realtime DB, Tailwind CSS
 
