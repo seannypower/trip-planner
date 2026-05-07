@@ -45,6 +45,9 @@ const normalizeTripConfig = (tripConfig) => {
       Number.isFinite(normalizedNumDays) && normalizedNumDays > 0
         ? normalizedNumDays
         : defaultTripConfig.numDays,
+    latitude: typeof tripConfig?.latitude === "number" ? tripConfig.latitude : null,
+    longitude: typeof tripConfig?.longitude === "number" ? tripConfig.longitude : null,
+    timezone: typeof tripConfig?.timezone === "string" ? tripConfig.timezone : null,
   };
 };
 
@@ -105,8 +108,11 @@ const ItineraryPlanner = () => {
   const [weatherByDate, setWeatherByDate] = useState<Record<string, { high: number; low: number; icon: string }>>({});
 
   useEffect(() => {
+    const lat = tripConfig.latitude ?? 42.67;
+    const lon = tripConfig.longitude ?? -76.95;
+    const tz = tripConfig.timezone ?? "America/New_York";
     fetch(
-      "https://api.open-meteo.com/v1/forecast?latitude=42.67&longitude=-76.95&daily=temperature_2m_max,temperature_2m_min,weathercode&temperature_unit=fahrenheit&timezone=America%2FNew_York&forecast_days=16"
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,weathercode&temperature_unit=fahrenheit&timezone=${encodeURIComponent(tz)}&forecast_days=16`
     )
       .then((res) => res.json())
       .then((data) => {
@@ -127,7 +133,7 @@ const ItineraryPlanner = () => {
       .catch(() => {
         // Silently fail — weather is a UI-only layer
       });
-  }, []);
+  }, [tripConfig.latitude, tripConfig.longitude, tripConfig.timezone]);
 
   const generateDays = (startDateStr: string, numDays: number) => {
     const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
