@@ -1,6 +1,6 @@
 import { saveItinerary, loadItinerary } from "./firebase";
 import './styles.css';
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   Plus,
   Trash2,
@@ -48,8 +48,37 @@ const normalizeTripConfig = (tripConfig) => {
     latitude: typeof tripConfig?.latitude === "number" ? tripConfig.latitude : null,
     longitude: typeof tripConfig?.longitude === "number" ? tripConfig.longitude : null,
     timezone: typeof tripConfig?.timezone === "string" ? tripConfig.timezone : null,
+    // Optional per-day location overrides, keyed by day index:
+    //   { "0": { label, latitude, longitude, timezone } }
+    // Days without an entry fall back to the trip-level coordinates, so trips
+    // that never set this keep the old single-location behaviour.
+    dayLocations:
+      tripConfig?.dayLocations && typeof tripConfig.dayLocations === "object"
+        ? tripConfig.dayLocations
+        : {},
   };
 };
+
+// Resolve a typed place name to coordinates. Deliberately NOT inferred from
+// activity names — "Gastown" geocodes to Pennsylvania and "Stanley Park" to
+// Colorado. The user types a city; the resolved match is shown back to them.
+const geocodePlace = async (query) => {
+  const res = await fetch(
+    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1`
+  );
+  const data = await res.json();
+  const hit = (data?.results || [])[0];
+  if (!hit) return null;
+  return {
+    label: hit.name,
+    resolved: [hit.name, hit.admin1, hit.country_code].filter(Boolean).join(", "),
+    latitude: hit.latitude,
+    longitude: hit.longitude,
+    timezone: hit.timezone || "auto",
+  };
+};
+
+const locKey = (lat, lon) => `${Number(lat).toFixed(3)},${Number(lon).toFixed(3)}`;
 
 const ItineraryPlanner = () => {
   const snapInterval = 15;
@@ -105,35 +134,147 @@ const ItineraryPlanner = () => {
     return "⛈️";
   };
 
-  const [weatherByDate, setWeatherByDate] = useState<Record<string, { high: number; low: number; icon: string }>>({});
+  // Weather is stored per location, not per date, because a single trip can
+  // span more than one city. Keyed by rounded "lat,lon".
+  const [weatherByLoc, setWeatherByLoc] = useState<
+    Record<string, Record<string, { high: number; low: number; icon: string }>>
+  >({});
+
+  // The location that applies to a given day: its own override if set,
+  // otherwise the trip-level coordinates.
+  const locationForDay = useCallback(
+    (dayIdx) => {
+      const override = tripConfig.dayLocations?.[String(dayIdx)];
+      if (
+        override &&
+        typeof override.latitude === "number" &&
+        typeof override.longitude === "number"
+      ) {
+        return override;
+      }
+      if (
+        typeof tripConfig.latitude === "number" &&
+        typeof tripConfig.longitude === "number"
+      ) {
+        return {
+          label: null,
+          latitude: tripConfig.latitude,
+          longitude: tripConfig.longitude,
+          timezone: tripConfig.timezone || "auto",
+        };
+      }
+      return null;
+    },
+    [tripConfig.dayLocations, tripConfig.latitude, tripConfig.longitude, tripConfig.timezone]
+  );
+
+  // Fetch once per distinct location rather than once per day.
+  const weatherFetchKey = JSON.stringify(
+    Array.from(
+      new Set(
+        Array.from({ length: tripConfig.numDays }, (_, i) => {
+          const loc = locationForDay(i);
+          return loc ? `${loc.latitude}|${loc.longitude}|${loc.timezone}` : null;
+        }).filter(Boolean)
+      )
+    ).sort()
+  );
 
   useEffect(() => {
-    const lat = tripConfig.latitude ?? 42.67;
-    const lon = tripConfig.longitude ?? -76.95;
-    const tz = tripConfig.timezone ?? "America/New_York";
-    fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,weathercode&temperature_unit=fahrenheit&timezone=${encodeURIComponent(tz)}&forecast_days=16`
-    )
-      .then((res) => res.json())
-      .then((data) => {
-        const map: Record<string, { high: number; low: number; icon: string }> = {};
+    const specs: string[] = JSON.parse(weatherFetchKey);
+    if (specs.length === 0) return;
+    let cancelled = false;
+
+    Promise.all(
+      specs.map(async (spec) => {
+        const [lat, lon, tz] = spec.split("|");
+        const res = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,weathercode&temperature_unit=fahrenheit&timezone=${encodeURIComponent(tz)}&forecast_days=16`
+        );
+        const data = await res.json();
+        const byDate: Record<string, { high: number; low: number; icon: string }> = {};
         const dates: string[] = data.daily?.time ?? [];
         const highs: number[] = data.daily?.temperature_2m_max ?? [];
         const lows: number[] = data.daily?.temperature_2m_min ?? [];
         const codes: number[] = data.daily?.weathercode ?? [];
         dates.forEach((date, i) => {
-          map[date] = {
+          byDate[date] = {
             high: Math.round(highs[i]),
             low: Math.round(lows[i]),
             icon: wmoIcon(codes[i]),
           };
         });
-        setWeatherByDate(map);
+        return [locKey(lat, lon), byDate] as const;
+      })
+    )
+      .then((entries) => {
+        if (cancelled) return;
+        const next: Record<string, Record<string, any>> = {};
+        entries.forEach(([k, v]) => {
+          next[k] = v;
+        });
+        setWeatherByLoc(next);
       })
       .catch(() => {
         // Silently fail — weather is a UI-only layer
       });
-  }, [tripConfig.latitude, tripConfig.longitude, tripConfig.timezone]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [weatherFetchKey]);
+
+  // Geocode lookup status per day index: "loading" | "notfound" | undefined
+  const [geoStatus, setGeoStatus] = useState<Record<number, string>>({});
+
+  // Set (or clear) a day's location. An empty value removes the override so the
+  // day falls back to the trip-level coordinates.
+  const applyDayLocation = async (dayIdx, rawValue) => {
+    const value = (rawValue || "").trim();
+    const current = tripConfig.dayLocations?.[String(dayIdx)];
+
+    if (!value) {
+      if (!current) return;
+      const next = { ...(tripConfig.dayLocations || {}) };
+      delete next[String(dayIdx)];
+      setTripConfig({ ...tripConfig, dayLocations: next });
+      setGeoStatus((s) => ({ ...s, [dayIdx]: undefined }));
+      return;
+    }
+    if (current && current.label === value) return;
+
+    setGeoStatus((s) => ({ ...s, [dayIdx]: "loading" }));
+    try {
+      const hit = await geocodePlace(value);
+      if (!hit) {
+        setGeoStatus((s) => ({ ...s, [dayIdx]: "notfound" }));
+        return;
+      }
+      setTripConfig((prev) => ({
+        ...prev,
+        dayLocations: {
+          ...(prev.dayLocations || {}),
+          [String(dayIdx)]: {
+            label: value,
+            resolved: hit.resolved,
+            latitude: hit.latitude,
+            longitude: hit.longitude,
+            timezone: hit.timezone,
+          },
+        },
+      }));
+      setGeoStatus((s) => ({ ...s, [dayIdx]: undefined }));
+    } catch (e) {
+      setGeoStatus((s) => ({ ...s, [dayIdx]: "notfound" }));
+    }
+  };
+
+  // Weather for a day = that day's location's forecast for that date.
+  const weatherFor = (dayIdx, isoDate) => {
+    const loc = locationForDay(dayIdx);
+    if (!loc) return null;
+    return weatherByLoc[locKey(loc.latitude, loc.longitude)]?.[isoDate] || null;
+  };
 
   const generateDays = (startDateStr: string, numDays: number) => {
     const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -208,12 +349,34 @@ const ItineraryPlanner = () => {
     return areaColors[area] || "bg-gray-200 border-gray-400";
   };
 
+  // Fingerprint of the last state we either loaded from or saved to Firebase.
+  //
+  // Without this the app writes to Firebase forever on its own: the 30s refresh
+  // below calls Object.values()/normalizeTripConfig(), which mint new object
+  // identities even when the bytes are unchanged. Those are dependencies of the
+  // save effect, so every poll scheduled a full set() on the whole node. An idle
+  // tab rewrote the entire itinerary on a timer, which is what silently clobbers
+  // external edits — and two open tabs would overwrite each other.
+  const syncFingerprintRef = useRef(null);
+
+  const fingerprint = (acts, snap, cfg) =>
+    JSON.stringify({
+      a: [...(acts || [])].sort((x, y) =>
+        String(x?.id ?? "").localeCompare(String(y?.id ?? ""))
+      ),
+      s: snap,
+      c: cfg,
+    });
+
   // Load from Firebase on mount
   useEffect(() => {
     loadItinerary()
       .then((data) => {
-        setActivities(Array.isArray(data?.activities) ? data.activities : []);
-        setTripConfig(normalizeTripConfig(data?.tripConfig));
+        const acts = Array.isArray(data?.activities) ? data.activities : [];
+        const cfg = normalizeTripConfig(data?.tripConfig);
+        syncFingerprintRef.current = fingerprint(acts, snapInterval, cfg);
+        setActivities(acts);
+        setTripConfig(cfg);
         setLoadError("");
         setIsLoaded(true);
       })
@@ -226,14 +389,21 @@ const ItineraryPlanner = () => {
       });
   }, []);
 
-  // Auto-refresh from Firebase every 10 seconds
+  // Auto-refresh from Firebase every 30 seconds
   useEffect(() => {
     const intervalId = setInterval(() => {
       loadItinerary()
         .then((data) => {
-          setActivities(Array.isArray(data?.activities) ? data.activities : []);
-          setTripConfig(normalizeTripConfig(data?.tripConfig));
+          const acts = Array.isArray(data?.activities) ? data.activities : [];
+          const cfg = normalizeTripConfig(data?.tripConfig);
+          const fp = fingerprint(acts, snapInterval, cfg);
           setLoadError("");
+          // Identical to what we already hold — setting state here would create
+          // fresh object identities and re-trigger the save effect for nothing.
+          if (fp === syncFingerprintRef.current) return;
+          syncFingerprintRef.current = fp;
+          setActivities(acts);
+          setTripConfig(cfg);
         })
         .catch((error) => {
           console.error("Failed to refresh itinerary:", error);
@@ -249,6 +419,10 @@ const ItineraryPlanner = () => {
     if (!isLoaded) return;
 
     const timeoutId = setTimeout(() => {
+      const fp = fingerprint(activities, snapInterval, tripConfig);
+      // Belt and braces: never write back something we just read.
+      if (fp === syncFingerprintRef.current) return;
+      syncFingerprintRef.current = fp;
       saveItinerary(activities, snapInterval, tripConfig).catch((error) => {
         console.error("Failed to save itinerary:", error);
         setLoadError("Could not save trip data to Firebase.");
@@ -672,6 +846,62 @@ const ItineraryPlanner = () => {
           </div>
         )}
 
+        {/* Per-day locations — drives the weather forecast for each column */}
+        {showTripSettings && (
+          <div className="mt-3 bg-white border rounded p-4">
+            <div className="text-xs text-gray-500 mb-2">
+              Location per day — sets which city each day's forecast comes from.
+              Type a <strong>city</strong> (not a neighbourhood: "Vancouver", not
+              "Gastown"). Blank days fall back to the trip default.
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {days.map((day, idx) => {
+                const entry = tripConfig.dayLocations?.[String(idx)];
+                const status = geoStatus[idx];
+                return (
+                  <div key={idx} className="w-52">
+                    <label className="block text-xs text-gray-500 mb-1">
+                      {day.date} ({day.dayOfWeek})
+                    </label>
+                    <div className="flex gap-1">
+                      <input
+                        type="text"
+                        defaultValue={entry?.label || ""}
+                        placeholder="e.g. Seattle"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                        }}
+                        onBlur={(e) => applyDayLocation(idx, e.target.value)}
+                        className="border rounded px-2 py-1 text-sm w-full"
+                      />
+                      {entry && (
+                        <button
+                          onClick={() => applyDayLocation(idx, "")}
+                          title="Clear — fall back to trip default"
+                          className="px-2 text-gray-400 hover:text-red-500 text-sm"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                    <div className="text-xs mt-1 h-4">
+                      {status === "loading" && (
+                        <span className="text-gray-400">looking up…</span>
+                      )}
+                      {status === "notfound" && (
+                        <span className="text-red-500">no match</span>
+                      )}
+                      {status !== "loading" && status !== "notfound" && entry?.resolved && (
+                        <span className="text-gray-400">→ {entry.resolved}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {loadError && (
           <div className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
             {loadError}
@@ -885,12 +1115,26 @@ const ItineraryPlanner = () => {
                 >
                   <div className="font-semibold">{day.date}</div>
                   <div className="text-xs text-gray-500">{day.dayOfWeek}</div>
-                  {weatherByDate[day.isoDate] && (
-                    <div className="text-xs text-gray-500 mt-1">
-                      {weatherByDate[day.isoDate].icon}{" "}
-                      {weatherByDate[day.isoDate].high}°/{weatherByDate[day.isoDate].low}°
-                    </div>
-                  )}
+                  {(() => {
+                    const w = weatherFor(idx, day.isoDate);
+                    const loc = locationForDay(idx);
+                    if (!w && !loc?.label) return null;
+                    return (
+                      <div className="text-xs text-gray-500 mt-1">
+                        {w && (
+                          <span>
+                            {w.icon} {w.high}°/{w.low}°
+                          </span>
+                        )}
+                        {loc?.label && (
+                          <span className="ml-1 text-gray-400">
+                            {w ? " · " : ""}
+                            {loc.label}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
